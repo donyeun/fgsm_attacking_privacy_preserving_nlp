@@ -1,0 +1,7 @@
+sentiment/logs
+sentiment/results
+sentiment/__pycache__
+.DS_Store
+.vscode
+Pytorch/
+sentiment/*.pyc
