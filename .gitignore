@@ -6,3 +6,4 @@ sentiment/__pycache__
 Pytorch/
 sentiment/*.pyc
 dataset/external/www2015
+glove.*.txt
