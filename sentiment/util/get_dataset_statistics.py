@@ -1,8 +1,8 @@
 import cPickle
 import pprint
 
-filename = "../merge.en.downsample"
-filename = "merge.en.output_cleaned"
+# filename = "../merge.en.downsample"
+filename = "util/merge.en.output_cleaned"
 # filename = "buangggg"
 examples = cPickle.load( open(filename, "rb") )
 
