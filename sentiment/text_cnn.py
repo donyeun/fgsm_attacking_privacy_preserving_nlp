@@ -7,46 +7,49 @@ class TextCNN(object):
     # [ ] input just one example per batch
     
     def fgm(self,
-            x, attack_attr,
-            eps=0.01, epochs=1, sign=True, filter_sizes,
-            num_filters, num_ratings, num_locations, num_genders, num_ages, hidden_size
+            x,
+            filter_sizes, num_filters, num_ratings, num_locations, num_genders, num_ages, hidden_size,
+            eps=0.01, epochs=1, sign=True, attack_attr=None,
         ):
-          
-        x_adv = tf.identity(x)
+        return x
+        # x_adv = tf.identity(x)
 
-        if sign:
-            noise_fn = tf.sign
-        else:
-            noise_fn = tf.identity
+        # if sign:
+        #     noise_fn = tf.sign
+        # else:
+        #     noise_fn = tf.identity
 
-        eps = -tf.abs(eps)
+        # eps = -tf.abs(eps)
 
-        def _body(xadv, i, attack_attr):
-            rating_loss, rating_accuracy, rating_pred, rating_score, \
-                location_loss, location_accuracy, location_pred, location_score, \
-                gender_loss, gender_accuracy, gender_pred, gender_score, \
-                age_loss, age_accuracy, age_pred, age_score, \
-                location_attacker_loss, location_attacker_accuracy, location_attacker_pred, location_attacker_score, \
-                gender_attacker_loss, gender_attacker_accuracy, gender_attacker_pred, gender_attacker_score, \
-                age_attacker_loss, age_attacker_accuracy, age_attacker_pred, age_attacker_score, \
-                    = after_cnn(xadv, filter_sizes, num_filters, num_ratings, num_locations, num_genders, num_ages, hidden_size)
+        # def _cond(xadv, i):
+        #     return tf.less(i, epochs)
 
-            logits = tf.identity(eval(attack_attr + "_score"))
-            y_bar = tf.identity(eval("self.input_" + attack_attr.split("_")[0]))
+        # def _body(xadv, i, attack_attr):
+        #     rating_loss, rating_accuracy, rating_pred, rating_score, \
+        #         location_loss, location_accuracy, location_pred, location_score, \
+        #         gender_loss, gender_accuracy, gender_pred, gender_score, \
+        #         age_loss, age_accuracy, age_pred, age_score, \
+        #         location_attacker_loss, location_attacker_accuracy, location_attacker_pred, location_attacker_score, \
+        #         gender_attacker_loss, gender_attacker_accuracy, gender_attacker_pred, gender_attacker_score, \
+        #         age_attacker_loss, age_attacker_accuracy, age_attacker_pred, age_attacker_score, \
+        #             = after_cnn(xadv, filter_sizes, num_filters, num_ratings, num_locations, num_genders, num_ages, hidden_size)
 
-            loss = loss_fn(labels=target, logits=logits)
-            dy_dx = tf.gradients(loss, x_adv)
-            x_adv = tf.stop_gradient(x_adv + eps * noise_fn(dy_dx))
-            return x_adv, i+1 
+        #     logits = tf.identity(eval(attack_attr + "_score"))
+        #     y_bar = tf.identity(eval("self.input_" + attack_attr.split("_")[0]))
 
-        x_adv, _ = tf.while_loop(
-                        tf.less(i, epochs),
-                        _body,
-                        (x_adv, 0),
-                        back_prop=False,
-                        name='fgm'
-                    )
-        return x_adv
+        #     loss = loss_fn(labels=target, logits=logits)
+        #     dy_dx = tf.gradients(loss, x_adv)
+        #     x_adv = tf.stop_gradient(x_adv + eps * noise_fn(dy_dx))
+        #     return x_adv, i+1 
+
+        # x_adv, _ = tf.while_loop(
+        #                 _cond,
+        #                 _body,
+        #                 (x_adv, 0),
+        #                 back_prop=False,
+        #                 name='fgm'
+        #             )
+        # return x_adv
 
 
     def after_cnn(self, h_drop, filter_sizes, num_filters, num_ratings, num_locations, num_genders, num_ages, hidden_size):
@@ -315,7 +318,7 @@ class TextCNN(object):
     def __init__(self, sequence_length, vocab_size,
             embedding_size, filter_sizes, num_filters,
             num_ratings, num_locations, num_genders, num_ages,
-            hidden_size, mode, l2_reg_lambda=0.0):
+            hidden_size, l2_reg_lambda=0.0):
             
         self.input_x = tf.placeholder(tf.int32, [None, sequence_length], name="input_x")
         self.input_rating = tf.placeholder(tf.float32, [None, num_ratings], name="input_rating_truth")
@@ -323,7 +326,9 @@ class TextCNN(object):
         self.input_gender = tf.placeholder(tf.float32, [None, num_genders], name="input_gender_truth")
         self.input_age = tf.placeholder(tf.float32, [None, num_ages], name="input_age_truth")
         
-        self.current_mode = tf.placeholder(tf.string, name="current_mode", shape=[])
+        self.current_mode = tf.placeholder_with_default("without_fgm", name="current_mode", shape=[])
+        self.attack_attr = tf.placeholder(tf.string, name="attack_attr", shape=[])
+
         l2_loss = tf.constant(0.0)
 
         with tf.variable_scope("embedding"):
@@ -349,9 +354,9 @@ class TextCNN(object):
             self.h_drop = tf.cond(
                 tf.math.equal(self.current_mode, "with_fgm"),
                 lambda: self.fgm(
-                    self.h_drop, attack_attr,
-                    eps=0.01, epochs=1, sign=True, filter_sizes,
-                    num_filters, num_ratings, num_locations, num_genders, num_ages, hidden_size
+                    self.h_drop,
+                    filter_sizes, num_filters, num_ratings, num_locations, num_genders, num_ages, hidden_size,
+                    eps=0.01, epochs=1, sign=True, attack_attr=self.attack_attr,
                 ),
                 lambda: self.dont_run_fgsm(self.h_drop)
             )

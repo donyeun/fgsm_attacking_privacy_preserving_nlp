@@ -32,16 +32,16 @@ tf.flags.DEFINE_float("l2_reg_lambda", 0, "L2 regularizaion lambda (default: 0.0
 tf.flags.DEFINE_float("learning_rate", 1e-4, "Learning rate alpha")
 tf.flags.DEFINE_float("lr_lambda", 0.5, "lr lambda")
 
-tf.flags.DEFINE_string("mode", "baseline", "baseline, privacy_preserving, attacking_privacy")
+tf.flags.DEFINE_string("mode", "privacy_preserving", "baseline, privacy_preserving, attacking_privacy")
 
 tf.flags.DEFINE_string("baseline_attr", "age", "location, gender, age")
 tf.flags.DEFINE_string("privacy_preserving_attr", "location", "all, location, gender, age")
-
+tf.flags.DEFINE_string("attacking_privacy_preserving_attr", "location", "location, gender, age")
 
 #  parameters
 tf.flags.DEFINE_integer("batch_size", 64, "Batch Size (default: 64)")
-# tf.flags.DEFINE_integer("num_epochs", 100, "Number of training epochs (default: 200 --> 100 by lrank)")
-tf.flags.DEFINE_integer("num_epochs", 3, "Number of training epochs (default: 200 --> 100 by lrank)")
+tf.flags.DEFINE_integer("num_epochs", 100, "Number of training epochs (default: 200 --> 100 by lrank)")
+# tf.flags.DEFINE_integer("num_epochs", 2, "Number of training epochs (default: 200 --> 100 by lrank)")
 tf.flags.DEFINE_integer("evaluate_every", 100, "Evaluate model on dev set after this many steps (default: 100)")
 tf.flags.DEFINE_integer("checkpoint_every", 100, "Save model after this many steps (default: 100)")
 # Misc Parameters
@@ -283,7 +283,7 @@ with tf.Graph().as_default():
               learning_rate: lr,
               adv_lambda: adv_lam,
               cnn.dropout_keep_prob: FLAGS.dropout_keep_prob,
-              cnn.phase: "train",
+            #   cnn.phase: "train",
             }
 
             _, step, l_rat, a_rat, p_rat, l_loc, p_loc, l_gen, p_gen, l_age, p_age = sess.run(
@@ -323,7 +323,7 @@ with tf.Graph().as_default():
               learning_rate: lr,
               adv_lambda: adv_lam,
               cnn.dropout_keep_prob: FLAGS.dropout_keep_prob,
-              cnn.phase: "train",
+            #   cnn.phase: "train",
             }
             
             # optimizer_attack_l = optimizers["location"]
@@ -397,7 +397,7 @@ with tf.Graph().as_default():
                     )
                 )
 
-        def dev_attacker_step(batch_x, batch_loc, batch_gen, batch_age, batch_rat, data_id=1, current_mode="without_fgm"):
+        def dev_attacker_step(batch_x, batch_loc, batch_gen, batch_age, batch_rat, data_id=1, current_mode="without_fgm", attack_attr="", print_result=True):
             """1
             Evaluates model on a dev set
             """
@@ -415,6 +415,7 @@ with tf.Graph().as_default():
               adv_lambda: 0.,
               cnn.dropout_keep_prob: 1.,
               cnn.current_mode: current_mode,
+              cnn.attack_attr: attack_attr,
             }
             
             step, l_rat, a_rat, p_rat, l_loc, p_loc, l_gen, p_gen, l_age, p_age = sess.run(
@@ -434,13 +435,15 @@ with tf.Graph().as_default():
                 average= 'micro'
             )
             f1_rat = sklearn.metrics.f1_score(y_true=np.argmax(batch_rat, axis=1), y_pred=p_rat, average='micro')
-            print("{}\t{}\t{:0.5g}\t{:0.5g}\t{:0.5g}\t{:0.5g}\t{:0.5g}\t{:0.5g}\t{:0.5g}\t{:0.5g}\t{:0.5g}".format(
-                data_id, step,
-                l_rat, a_rat, f1_rat,
-                l_loc, a_loc,
-                l_gen, a_gen,
-                l_age, a_age )
-            )
+
+            if print_result:
+                print("{}\t{}\t{:0.5g}\t{:0.5g}\t{:0.5g}\t{:0.5g}\t{:0.5g}\t{:0.5g}\t{:0.5g}\t{:0.5g}\t{:0.5g}".format(
+                    data_id, step,
+                    l_rat, a_rat, f1_rat,
+                    l_loc, a_loc,
+                    l_gen, a_gen,
+                    l_age, a_age )
+                )
             
             # y_true_rat = np.argmax(batch_rat, axis=1)
             # y_pred_rat = p_rat
@@ -459,12 +462,13 @@ with tf.Graph().as_default():
             #         'age' : p_age,
             #     },
             # }
-            return a_rat, p_loc, p_gen, p_age
+            # return a_rat, p_loc, p_gen, p_age
+            return a_rat, a_loc, a_gen, a_age
             # return l_rat, a_rat, f1_rat, l_loc, a_loc, l_gen, a_gen, l_age, a_age, y
             
 
-        # writer = csv.writer(open('output_y.csv', 'w'), delimiter='\t')
-        # writer.writerow(['true rat', 'pred rat', 'true loc', 'pred loc', 'true gen', 'pred gen', 'true age', 'pred age',])
+        writer = csv.writer(open('output_y.csv', 'w'), delimiter='\t')
+        writer.writerow(['true rat', 'pred rat', 'true loc', 'pred loc', 'true gen', 'pred gen', 'true age', 'pred age',])
 
         #data_split
         x_train, loc_train, gen_train, age_train, rat_train, \
@@ -587,15 +591,38 @@ with tf.Graph().as_default():
                 # ==============================================================================================================
                 # <BEGIN ORIGINAL
                 # evaluaate as usual, for the entire test set
-                # current_step = tf.train.global_step(sess, global_step)
-                # if current_step % FLAGS.evaluate_every == 0:
-                #     test_score, a_l, a_g, a_a = dev_attacker_step( x_test, loc_test, gen_test, age_test, rat_test, 2)
+                current_step = tf.train.global_step(sess, global_step)
+                if current_step % FLAGS.evaluate_every == 0:
+                    test_score, a_l, a_g, a_a = dev_attacker_step( x_test, loc_test, gen_test, age_test, rat_test, 2)
                 # END>
                 # ==============================================================================================================
                 # <BEGIN MODIFIED
-                current_step = tf.train.global_step(sess, global_step)
-                x_test, loc_test, gen_test, age_test, rat_test = fgsm_batch_iter.next_balanced_label_batch()
-                test_score, a_l, a_g, a_a = dev_attacker_step( x_test, loc_test, gen_test, age_test, rat_test, 2)
+                # current_step = tf.train.global_step(sess, global_step)
+                    correct_rat = 0
+                    correct_loc = 0
+                    correct_gen = 0
+                    correct_age = 0
+                    
+                    for _ in range(test_size):
+                        # current_step = tf.train.global_step(sess, global_step)
+                        x_test_datum, loc_test_datum, gen_test_datum, age_test_datum, rat_test_datum = fgsm_batch_iter.next_balanced_label_batch()
+                        a_r_datum, a_l_datum, a_g_datum, a_a_datum = dev_attacker_step( x_test_datum, loc_test_datum, gen_test_datum, age_test_datum, rat_test_datum, 2, print_result=False)
+                        
+                        correct_rat += a_r_datum
+                        correct_loc += a_l_datum
+                        correct_gen += a_g_datum
+                        correct_age += a_a_datum
+
+                    print(
+                        "~~~~",
+                        correct_rat/test_size,
+                        correct_loc/test_size,
+                        correct_gen/test_size,
+                        correct_age/test_size,
+                    )
+
+
+
 
                 # END>
                 # ==============================================================================================================
@@ -605,4 +632,5 @@ with tf.Graph().as_default():
             # if the spotlight is on location, then watch the loss of location (from FC layers) and use that gradient to change the label.
 
             # fgm attack
-            # test_score, a_l, a_g, a_a = dev_attacker_step( x_test, loc_test, gen_test, age_test, rat_test, 2, "with_fgm")
+            attack_attr = FLAGS.attacking_privacy_preserving_attr
+            # test_score, a_l, a_g, a_a = dev_attacker_step( x_test, loc_test, gen_test, age_test, rat_test, 2, "with_fgm", attack_attr)
