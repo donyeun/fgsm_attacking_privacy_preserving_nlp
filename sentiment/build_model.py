@@ -32,7 +32,7 @@ tf.flags.DEFINE_float("l2_reg_lambda", 0, "L2 regularizaion lambda (default: 0.0
 tf.flags.DEFINE_float("learning_rate", 1e-4, "Learning rate alpha")
 tf.flags.DEFINE_float("lr_lambda", 0.5, "lr lambda")
 
-tf.flags.DEFINE_string("mode", "privacy_preserving", "baseline, privacy_preserving, attacking_privacy")
+tf.flags.DEFINE_string("mode", "baseline", "baseline, privacy_preserving, attacking_privacy")
 
 tf.flags.DEFINE_string("baseline_attr", "age", "location, gender, age")
 tf.flags.DEFINE_string("privacy_preserving_attr", "location", "all, location, gender, age")
@@ -366,7 +366,7 @@ with tf.Graph().as_default():
             
             # print the result
             if (attack_attr == "all"):
-                print("0\t{}\t{:g}\t{:g}\t{:g}\t{:g}\t{:g}\t{:g}\t{:g}\t{:g}".format(
+                print("3\t{}\t{:g}\t{:g}\t{:g}\t{:g}\t{:g}\t{:g}\t{:g}\t{:g}".format(
                     
                     step,
                     l_rat, a_rat,
@@ -376,36 +376,31 @@ with tf.Graph().as_default():
                     )
                 )
             elif (attack_attr == "location"):
-                print("0\t{}\t{:g}\t{:g}\t{:g}\t{:g}".format(    
+                print("3\t{}\t{:g}\t{:g}\t{:g}\t{:g}".format(    
                     step,
                     l_rat, a_rat,
                     l_loc, incomp_acc(p_loc, batch_loc),
                     )
                 )
             elif (attack_attr == "gender"):
-                print("0\t{}\t{:g}\t{:g}\t{:g}\t{:g}".format(    
+                print("3\t{}\t{:g}\t{:g}\t{:g}\t{:g}".format(    
                     step,
                     l_rat, a_rat,
                     l_gen, incomp_acc(p_gen, batch_gen),
                     )
                 )
             elif (attack_attr == "age"):
-                print("0\t{}\t{:g}\t{:g}\t{:g}\t{:g}".format(    
+                print("3\t{}\t{:g}\t{:g}\t{:g}\t{:g}".format(    
                     step,
                     l_rat, a_rat,
                     l_age, incomp_acc(p_age, batch_age)
                     )
                 )
 
-        def dev_attacker_step(batch_x, batch_loc, batch_gen, batch_age, batch_rat, data_id=1, current_mode="without_fgm", attack_attr="", print_result=True):
+        def dev_attacker_step(batch_x, batch_loc, batch_gen, batch_age, batch_rat, data_id=4, current_mode="without_fgm", attack_attr="", print_result=True):
             """1
             Evaluates model on a dev set
             """
-            # if data_id == 1:
-            #     current_phase = "dev"
-            # else:
-            #     current_phase = "test"
-
             feed_dict = {
               cnn.input_x: batch_x,
               cnn.input_rating: batch_rat,
@@ -464,7 +459,6 @@ with tf.Graph().as_default():
             # }
             # return a_rat, p_loc, p_gen, p_age
             return a_rat, a_loc, a_gen, a_age
-            # return l_rat, a_rat, f1_rat, l_loc, a_loc, l_gen, a_gen, l_age, a_age, y
             
 
         writer = csv.writer(open('output_y.csv', 'w'), delimiter='\t')
@@ -543,7 +537,6 @@ with tf.Graph().as_default():
   
                 current_step = tf.train.global_step(sess, global_step)
                 if current_step % FLAGS.evaluate_every == 0:
-                    print("3\t{:0.5g}".format(lr_lamb))
                     loss_rat, acc_rat, f1_rat, l_loc, a_loc, l_gen, a_gen, l_age, a_age, y_batch = dev_step( x_dev, loc_dev, gen_dev, age_dev, rat_dev, 1)
                     
                     test_loss, test_acc, test_f1, test_l_loc, test_a_loc, test_l_gen, test_a_gen, test_l_age, test_a_age, y_test_batch = dev_step( x_test, loc_test, gen_test, age_test, rat_test, 2)
@@ -556,7 +549,7 @@ with tf.Graph().as_default():
 
                 current_step = tf.train.global_step(sess, global_step)
                 if current_step % FLAGS.evaluate_every == 0:
-                    test_score, a_l, a_g, a_a = dev_attacker_step( x_test, loc_test, gen_test, age_test, rat_test, 2)
+                    test_score, a_l, a_g, a_a = dev_attacker_step( x_test, loc_test, gen_test, age_test, rat_test, 5)
 
         elif FLAGS.mode == "privacy_preserving":
             for _ in range(FLAGS.num_epochs * data_size / FLAGS.batch_size):
@@ -593,7 +586,7 @@ with tf.Graph().as_default():
                 # evaluaate as usual, for the entire test set
                 current_step = tf.train.global_step(sess, global_step)
                 if current_step % FLAGS.evaluate_every == 0:
-                    test_score, a_l, a_g, a_a = dev_attacker_step( x_test, loc_test, gen_test, age_test, rat_test, 2)
+                    test_score, a_l, a_g, a_a = dev_attacker_step( x_test, loc_test, gen_test, age_test, rat_test, 5)
                 # END>
                 # ==============================================================================================================
                 # <BEGIN MODIFIED
@@ -606,7 +599,7 @@ with tf.Graph().as_default():
                     for _ in range(test_size):
                         # current_step = tf.train.global_step(sess, global_step)
                         x_test_datum, loc_test_datum, gen_test_datum, age_test_datum, rat_test_datum = fgsm_batch_iter.next_balanced_label_batch()
-                        a_r_datum, a_l_datum, a_g_datum, a_a_datum = dev_attacker_step( x_test_datum, loc_test_datum, gen_test_datum, age_test_datum, rat_test_datum, 2, print_result=False)
+                        a_r_datum, a_l_datum, a_g_datum, a_a_datum = dev_attacker_step( x_test_datum, loc_test_datum, gen_test_datum, age_test_datum, rat_test_datum, 5, print_result=False)
                         
                         correct_rat += a_r_datum
                         correct_loc += a_l_datum
@@ -628,9 +621,70 @@ with tf.Graph().as_default():
                 # ==============================================================================================================
                 
         elif FLAGS.mode == "attacking_privacy":
-            pass
+            for _ in range(FLAGS.num_epochs * data_size / FLAGS.batch_size):
+                current_step = tf.train.global_step(sess, global_step)
+                # lr_lamb = (current_step / 100) / 1000.0
+                
+                # if lr_lamb > FLAGS.lr_lambda:
+                lr_lamb = FLAGS.lr_lambda
+
+                batch_x, batch_loc, batch_gen, batch_age, batch_rat = training_batch_iter.next_balanced_label_batch()
+
+                train_step( batch_x, batch_loc, batch_gen, batch_age, batch_rat, optimizer_g, adv_lam=lr_lamb, lr=training_learning_rate)
+                # train_step( batch_x, batch_loc, batch_gen, batch_age, batch_rat, optimizer_g, adv_lam=0.05, lr=training_learning_rate)
+
+                current_step = tf.train.global_step(sess, global_step)
+                if current_step % FLAGS.evaluate_every == 0:
+                    # print("\nEvaluation:")
+                    print("3\t{:0.5g}".format(lr_lamb))
+                    # DONY: using dev set (data_id=1)
+                    loss_rat, acc_rat, f1_rat, l_loc, a_loc, l_gen, a_gen, l_age, a_age, y_batch = dev_step( x_dev, loc_dev, gen_dev, age_dev, rat_dev, 1)
+                    
+                    # dony: this line need to be separated from the training phase
+                    # dony: using test set (data_id=2)
+                    # cnn.set_phase(phase='eval')
+                    test_loss, test_acc, test_f1, test_l_loc, test_a_loc, test_l_gen, test_a_gen, test_l_age, test_a_age, y_test_batch = dev_step( x_test, loc_test, gen_test, age_test, rat_test, 2)
+
+            print("training attack")
+            for _ in range(FLAGS.num_epochs * data_size / FLAGS.batch_size):
+                batch_x, batch_loc, batch_gen, batch_age, batch_rat = training_batch_iter.next_balanced_label_batch()
+                train_attacker_step( batch_x, batch_loc, batch_gen, batch_age, batch_rat, optimizer_attack_l, adv_lam=lr_lamb, lr=training_learning_rate * 0.1 )
+
+                # ==============================================================================================================
+                # <BEGIN ORIGINAL
+                # evaluaate as usual, for the entire test set
+                current_step = tf.train.global_step(sess, global_step)
+                if current_step % FLAGS.evaluate_every == 0:
+                    # test_score, a_l, a_g, a_a = dev_attacker_step( x_test, loc_test, gen_test, age_test, rat_test, 2)
+                # END>
+                # ==============================================================================================================
+                # <BEGIN MODIFIED
+                # current_step = tf.train.global_step(sess, global_step)
+                    correct_rat = 0
+                    correct_loc = 0
+                    correct_gen = 0
+                    correct_age = 0
+                    
+                    for _ in range(test_size):
+                        # current_step = tf.train.global_step(sess, global_step)
+                        x_test_datum, loc_test_datum, gen_test_datum, age_test_datum, rat_test_datum = fgsm_batch_iter.next_balanced_label_batch()
+                        a_r_datum, a_l_datum, a_g_datum, a_a_datum = dev_attacker_step( x_test_datum, loc_test_datum, gen_test_datum, age_test_datum, rat_test_datum, 2, print_result=False, current_mode="with_fgm", attack_attr=FLAGS.attacking_privacy_preserving_attr)
+                        
+                        correct_rat += a_r_datum
+                        correct_loc += a_l_datum
+                        correct_gen += a_g_datum
+                        correct_age += a_a_datum
+
+                    print(
+                        "~~~~",
+                        correct_rat/test_size,
+                        correct_loc/test_size,
+                        correct_gen/test_size,
+                        correct_age/test_size,
+                    )
+
             # if the spotlight is on location, then watch the loss of location (from FC layers) and use that gradient to change the label.
 
             # fgm attack
             attack_attr = FLAGS.attacking_privacy_preserving_attr
-            # test_score, a_l, a_g, a_a = dev_attacker_step( x_test, loc_test, gen_test, age_test, rat_test, 2, "with_fgm", attack_attr)
+            # test_score, a_l, a_g, a_a = dev_attacker_step( x_test, loc_test, gen_test, age_test, rat_test, 5, "with_fgm", attack_attr)
