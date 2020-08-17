@@ -32,7 +32,7 @@ tf.flags.DEFINE_float("l2_reg_lambda", 0, "L2 regularizaion lambda (default: 0.0
 tf.flags.DEFINE_float("learning_rate", 1e-4, "Learning rate alpha")
 tf.flags.DEFINE_float("lr_lambda", 0.5, "lr lambda")
 
-tf.flags.DEFINE_string("mode", "baseline", "baseline, privacy_preserving, attacking_privacy")
+tf.flags.DEFINE_string("mode", "attacking_privacy", "baseline, privacy_preserving, attacking_privacy")
 
 tf.flags.DEFINE_string("baseline_attr", "age", "location, gender, age")
 tf.flags.DEFINE_string("privacy_preserving_attr", "location", "all, location, gender, age")
@@ -117,6 +117,10 @@ with tf.Graph().as_default():
         var_gend = [var for var in all_var_list if 'gender' in var.name]
         var_age  = [var for var in all_var_list if 'age' in var.name]
         
+        print("&"*30)
+        print(len(var_loca))
+        print(len(var_gend))
+        print(len(var_age))
         assert( len(var_loca) == 4 and len(var_gend) == 4 and len(var_age) == 4 )
 
         if FLAGS.privacy_preserving_attr == "age":
@@ -169,7 +173,13 @@ with tf.Graph().as_default():
                 var_list=var_attack_a,
                 global_step=global_step
                 )
-        assert( len(var_attack_l) == 4 and len(var_attack_g) == 4 and len(var_attack_a) == 4 )
+
+        print("&"*30)
+        print(len(var_attack_l))
+        print(len(var_attack_g))
+        print(len(var_attack_a))
+        print(var_attack_l)
+        # assert( len(var_attack_l) == 4 and len(var_attack_g) == 4 and len(var_attack_a) == 4 )
 
         #representation opt
         var_g = [var for var in all_var_list if var not in (var_loca + var_gend + var_age + var_attack_l + var_attack_g + var_attack_a)]
@@ -195,8 +205,100 @@ with tf.Graph().as_default():
                 return -1
             return c_cor / c_total
 
-        def fgsm_step():
-            pass
+        def fgsm_step(batch_x, batch_loc, batch_gen, batch_age, batch_rat, data_id=4, current_mode="with_fgm", attack_attr="", print_result=True, injected_h=None, return_h_drop=False):
+        # def fgsm_step(batch_x, batch_loc, batch_gen, batch_age, batch_rat, data_id=4, current_mode="without_fgm", attack_attr="", print_result=True, injected_h=None, return_h_drop=False):
+            """1
+            Evaluates model on a dev set
+            """
+            feed_dict = {
+              cnn.input_x: batch_x,
+              cnn.input_rating: batch_rat,
+              cnn.input_location: batch_loc,
+              cnn.input_gender: batch_gen,
+              cnn.input_age: batch_age,
+              adv_lambda: 0.,
+              cnn.dropout_keep_prob: 1.,
+              cnn.current_mode: current_mode,
+              cnn.attack_attr: attack_attr,
+            }
+            
+            # if injected_h is not None:
+            #     feed_dict[cnn.injected_h] = injected_h
+
+            step, l_rat, a_rat, p_rat, l_loc, p_loc, l_gen, p_gen, l_age, p_age = sess.run(
+                [global_step,
+                cnn.rating_loss, cnn.rating_accuracy, cnn.rating_pred,
+                cnn.location_attacker_loss, cnn.location_attacker_pred,
+                cnn.gender_attacker_loss, cnn.gender_attacker_pred,
+                cnn.age_attacker_loss, cnn.age_attacker_pred],
+                feed_dict)
+
+                # rating_loss, rating_accuracy, rating_pred, rating_score, \
+                # location_attacker_loss, location_attacker_accuracy, location_attacker_pred, location_attacker_score, \
+                # gender_attacker_loss, gender_attacker_accuracy, gender_attacker_pred, gender_attacker_score, \
+                # age_attacker_loss, age_attacker_accuracy, age_attacker_pred, age_attacker_score
+            # print('lossss shouldnt be zero below')
+            # print(l_rat)
+            # print(l_loc)
+            # print(l_gen)
+            # print('rating~~~~')
+            # print(p_rat)
+            # # print(np.argmax(p_rat, axis=1))
+            # print(batch_rat)
+            # # print(np.argmax(batch_rat, axis=1))
+            # print('masalah')
+            # print(p_loc)
+            # # print(np.argmax(p_loc, axis=1))
+            # print(batch_loc)
+            # # print(np.argmax(batch_loc, axis=1))
+
+            # # p_loc = np.argmax(p_loc, axis=1)
+            # # batch_loc = np.argmax(batch_loc, axis=1)
+            # print('more')
+            # print(p_gen)
+            # print(p_age)
+
+            a_loc = incomp_acc(p_loc, batch_loc)
+            a_gen = incomp_acc(p_gen, batch_gen)
+            a_age = incomp_acc(p_age, batch_age)
+            f1_rat = sklearn.metrics.f1_score(
+                y_true = np.argmax(batch_rat, axis=1),
+                y_pred = p_rat,
+                average= 'micro'
+            )
+            f1_rat = sklearn.metrics.f1_score(y_true=np.argmax(batch_rat, axis=1), y_pred=p_rat, average='micro')
+
+            if print_result:
+                print("9\t{}\t{:0.5g}\t{:0.5g}\t{:0.5g}\t{:0.5g}\t{:0.5g}\t{:0.5g}\t{:0.5g}\t{:0.5g}\t{:0.5g}".format(
+                    step,
+                    l_rat, a_rat, f1_rat,
+                    l_loc, a_loc,
+                    l_gen, a_gen,
+                    l_age, a_age )
+                )
+            
+            # y_true_rat = np.argmax(batch_rat, axis=1)
+            # y_pred_rat = p_rat
+
+            y = {
+                'true' : {
+                    'rat' : np.argmax(batch_rat, axis=1),
+                    'loc' : np.argmax(batch_loc, axis=1),
+                    'gen' : np.argmax(batch_gen, axis=1),
+                    'age' : np.argmax(batch_age, axis=1),
+                },
+                'pred' : {
+                    'rat' : p_rat,
+                    'loc' : p_loc,
+                    'gen' : p_gen,
+                    'age' : p_age,
+                },
+            }
+            # return a_rat, p_loc, p_gen, p_age
+            if return_h_drop:
+                return a_rat, a_loc, a_gen, a_age, y, original_h_drop,
+            return a_rat, a_loc, a_gen, a_age, y
+
 
         def dev_step(batch_x, batch_loc, batch_gen, batch_age, batch_rat, data_id=1):
             """
@@ -397,7 +499,7 @@ with tf.Graph().as_default():
                     )
                 )
 
-        def dev_attacker_step(batch_x, batch_loc, batch_gen, batch_age, batch_rat, data_id=4, current_mode="without_fgm", attack_attr="", print_result=True):
+        def dev_attacker_step(batch_x, batch_loc, batch_gen, batch_age, batch_rat, data_id=4, current_mode="without_fgm", attack_attr="", print_result=True, injected_h=None, return_h_drop=False):
             """1
             Evaluates model on a dev set
             """
@@ -413,14 +515,28 @@ with tf.Graph().as_default():
               cnn.attack_attr: attack_attr,
             }
             
-            step, l_rat, a_rat, p_rat, l_loc, p_loc, l_gen, p_gen, l_age, p_age = sess.run(
-                [global_step,
+            if injected_h is not None:
+                feed_dict[cnn.injected_h] = injected_h
+
+            step, original_h_drop, l_rat,a_rat, p_rat, l_loc, p_loc, l_gen, p_gen, l_age, p_age = sess.run(
+                [global_step, cnn.original_h_drop,
                 cnn.rating_loss, cnn.rating_accuracy, cnn.rating_pred,
                 cnn.location_attacker_loss, cnn.location_attacker_pred,
                 cnn.gender_attacker_loss, cnn.gender_attacker_pred,
                 cnn.age_attacker_loss, cnn.age_attacker_pred],
                 feed_dict)
 
+
+            # print('rating##2')
+            # print(p_rat)
+            # print(batch_rat)
+            # # print(np.argmax(batch_rat, axis=1))
+            # print('masalah')
+            # print(p_loc)
+            # print(batch_loc)
+            # # print(np.argmax(batch_loc, axis=1))
+
+            
             a_loc = incomp_acc(p_loc, batch_loc)
             a_gen = incomp_acc(p_gen, batch_gen)
             a_age = incomp_acc(p_age, batch_age)
@@ -443,22 +559,24 @@ with tf.Graph().as_default():
             # y_true_rat = np.argmax(batch_rat, axis=1)
             # y_pred_rat = p_rat
 
-            # y = {
-            #     'true' : {
-            #         'rat' : np.argmax(batch_rat, axis=1),
-            #         'loc' : np.argmax(batch_loc, axis=1),
-            #         'gen' : np.argmax(batch_gen, axis=1),
-            #         'age' : np.argmax(batch_age, axis=1),
-            #     },
-            #     'pred' : {
-            #         'rat' : p_rat,
-            #         'loc' : p_loc,
-            #         'gen' : p_gen,
-            #         'age' : p_age,
-            #     },
-            # }
+            y = {
+                'true' : {
+                    'rat' : np.argmax(batch_rat, axis=1),
+                    'loc' : np.argmax(batch_loc, axis=1),
+                    'gen' : np.argmax(batch_gen, axis=1),
+                    'age' : np.argmax(batch_age, axis=1),
+                },
+                'pred' : {
+                    'rat' : p_rat,
+                    'loc' : p_loc,
+                    'gen' : p_gen,
+                    'age' : p_age,
+                },
+            }
             # return a_rat, p_loc, p_gen, p_age
-            return a_rat, a_loc, a_gen, a_age
+            if return_h_drop:
+                return a_rat, a_loc, a_gen, a_age, y, original_h_drop,
+            return a_rat, a_loc, a_gen, a_age, y
             
 
         writer = csv.writer(open('output_y.csv', 'w'), delimiter='\t')
@@ -476,10 +594,17 @@ with tf.Graph().as_default():
         train_writer = tf.summary.FileWriter("./logs", sess.graph)
         # print('train_writer at ', FLAGS.log_dir)
         sess.run(tf.global_variables_initializer())
+        print("$"*30)
+        print(print(tf.global_variables()))
+        print("$"*30)
         sess.run(cnn.emb_W.assign(w_embs))
 
         # Training loop. For each batch...
         data_size = len(x_train)
+        print('xxxxx training data length')
+        print(data_size)
+        print('xxxxx testing data length')
+        print(len(x_test))
         best_dev_score = 0.
         bset_test_score = 0.
         best_dev_f1_score = 0.
@@ -549,7 +674,7 @@ with tf.Graph().as_default():
 
                 current_step = tf.train.global_step(sess, global_step)
                 if current_step % FLAGS.evaluate_every == 0:
-                    test_score, a_l, a_g, a_a = dev_attacker_step( x_test, loc_test, gen_test, age_test, rat_test, 5)
+                    test_score, a_l, a_g, a_a, y = dev_attacker_step( x_test, loc_test, gen_test, age_test, rat_test, 5)
 
         elif FLAGS.mode == "privacy_preserving":
             for _ in range(FLAGS.num_epochs * data_size / FLAGS.batch_size):
@@ -567,7 +692,6 @@ with tf.Graph().as_default():
                 current_step = tf.train.global_step(sess, global_step)
                 if current_step % FLAGS.evaluate_every == 0:
                     # print("\nEvaluation:")
-                    print("3\t{:0.5g}".format(lr_lamb))
                     # DONY: using dev set (data_id=1)
                     loss_rat, acc_rat, f1_rat, l_loc, a_loc, l_gen, a_gen, l_age, a_age, y_batch = dev_step( x_dev, loc_dev, gen_dev, age_dev, rat_dev, 1)
                     
@@ -586,7 +710,7 @@ with tf.Graph().as_default():
                 # evaluaate as usual, for the entire test set
                 current_step = tf.train.global_step(sess, global_step)
                 if current_step % FLAGS.evaluate_every == 0:
-                    test_score, a_l, a_g, a_a = dev_attacker_step( x_test, loc_test, gen_test, age_test, rat_test, 5)
+                    test_score, a_l, a_g, a_a, y = dev_attacker_step( x_test, loc_test, gen_test, age_test, rat_test, 5)
                 # END>
                 # ==============================================================================================================
                 # <BEGIN MODIFIED
@@ -599,7 +723,7 @@ with tf.Graph().as_default():
                     for _ in range(test_size):
                         # current_step = tf.train.global_step(sess, global_step)
                         x_test_datum, loc_test_datum, gen_test_datum, age_test_datum, rat_test_datum = fgsm_batch_iter.next_balanced_label_batch()
-                        a_r_datum, a_l_datum, a_g_datum, a_a_datum = dev_attacker_step( x_test_datum, loc_test_datum, gen_test_datum, age_test_datum, rat_test_datum, 5, print_result=False)
+                        a_r_datum, a_l_datum, a_g_datum, a_a_datum, y = dev_attacker_step( x_test_datum, loc_test_datum, gen_test_datum, age_test_datum, rat_test_datum, 5, print_result=False)
                         
                         correct_rat += a_r_datum
                         correct_loc += a_l_datum
@@ -623,20 +747,14 @@ with tf.Graph().as_default():
         elif FLAGS.mode == "attacking_privacy":
             for _ in range(FLAGS.num_epochs * data_size / FLAGS.batch_size):
                 current_step = tf.train.global_step(sess, global_step)
-                # lr_lamb = (current_step / 100) / 1000.0
-                
-                # if lr_lamb > FLAGS.lr_lambda:
                 lr_lamb = FLAGS.lr_lambda
 
                 batch_x, batch_loc, batch_gen, batch_age, batch_rat = training_batch_iter.next_balanced_label_batch()
 
                 train_step( batch_x, batch_loc, batch_gen, batch_age, batch_rat, optimizer_g, adv_lam=lr_lamb, lr=training_learning_rate)
-                # train_step( batch_x, batch_loc, batch_gen, batch_age, batch_rat, optimizer_g, adv_lam=0.05, lr=training_learning_rate)
 
                 current_step = tf.train.global_step(sess, global_step)
                 if current_step % FLAGS.evaluate_every == 0:
-                    # print("\nEvaluation:")
-                    print("3\t{:0.5g}".format(lr_lamb))
                     # DONY: using dev set (data_id=1)
                     loss_rat, acc_rat, f1_rat, l_loc, a_loc, l_gen, a_gen, l_age, a_age, y_batch = dev_step( x_dev, loc_dev, gen_dev, age_dev, rat_dev, 1)
                     
@@ -648,14 +766,13 @@ with tf.Graph().as_default():
             print("training attack")
             for _ in range(FLAGS.num_epochs * data_size / FLAGS.batch_size):
                 batch_x, batch_loc, batch_gen, batch_age, batch_rat = training_batch_iter.next_balanced_label_batch()
-                train_attacker_step( batch_x, batch_loc, batch_gen, batch_age, batch_rat, optimizer_attack_l, adv_lam=lr_lamb, lr=training_learning_rate * 0.1 )
-
+                train_attacker_step( batch_x, batch_loc, batch_gen, batch_age, batch_rat, optimizer_attack_l, adv_lam=lr_lamb, lr=training_learning_rate * 0.1)
                 # ==============================================================================================================
                 # <BEGIN ORIGINAL
                 # evaluaate as usual, for the entire test set
                 current_step = tf.train.global_step(sess, global_step)
                 if current_step % FLAGS.evaluate_every == 0:
-                    # test_score, a_l, a_g, a_a = dev_attacker_step( x_test, loc_test, gen_test, age_test, rat_test, 2)
+                    # test_score, a_l, a_g, a_a, y = dev_attacker_step( x_test, loc_test, gen_test, age_test, rat_test, 2)
                 # END>
                 # ==============================================================================================================
                 # <BEGIN MODIFIED
@@ -664,27 +781,56 @@ with tf.Graph().as_default():
                     correct_loc = 0
                     correct_gen = 0
                     correct_age = 0
-                    
-                    for _ in range(test_size):
-                        # current_step = tf.train.global_step(sess, global_step)
-                        x_test_datum, loc_test_datum, gen_test_datum, age_test_datum, rat_test_datum = fgsm_batch_iter.next_balanced_label_batch()
-                        a_r_datum, a_l_datum, a_g_datum, a_a_datum = dev_attacker_step( x_test_datum, loc_test_datum, gen_test_datum, age_test_datum, rat_test_datum, 2, print_result=False, current_mode="with_fgm", attack_attr=FLAGS.attacking_privacy_preserving_attr)
-                        
-                        correct_rat += a_r_datum
-                        correct_loc += a_l_datum
-                        correct_gen += a_g_datum
-                        correct_age += a_a_datum
 
-                    print(
-                        "~~~~",
-                        correct_rat/test_size,
-                        correct_loc/test_size,
-                        correct_gen/test_size,
-                        correct_age/test_size,
-                    )
+            print("ATTACKKKKKKKKKKKKKKKK")
+            for _ in range(test_size):
+                x_test_datum, loc_test_datum, gen_test_datum, age_test_datum, rat_test_datum = fgsm_batch_iter.next_balanced_label_batch()
+                a_r_datum, a_l_datum, a_g_datum, a_a_datum, y, original_h_drop = dev_attacker_step( x_test_datum, loc_test_datum, gen_test_datum, age_test_datum, rat_test_datum, 4, print_result=True, current_mode="without_fgm", attack_attr=FLAGS.attacking_privacy_preserving_attr, return_h_drop=True)
+                # print('#####')
+                # print(y['pred']['loc'])
+                # print(y['true']['loc'])
+                # print(y['true']['loc'] == y['pred']['loc'])
+                if y['pred']['loc'] != y['true']['loc']:
+                    fgsm_step(x_test_datum, loc_test_datum, gen_test_datum, age_test_datum, rat_test_datum)
+                else:
+                    print("8\tx\tx\t{}\t{}\tx\t{}\tx\t{}\tx\t{}".format(
+                        # step,
+                        int(y['pred']['rat'] == y['true']['rat']),
+                        int(y['pred']['rat'] == y['true']['rat']),
+                        int(y['pred']['loc'] == y['true']['loc']),
+                        int(y['pred']['gen'] == y['true']['gen']),
+                        int(y['pred']['age'] == y['true']['age']),
+                    ))
+                    # ==========kelar direview sampe sini
+                        # # a_r_datum, a_l_datum, a_g_datum, a_a_datum, y, original_h_drop = dev_attacker_step( x_test_datum, loc_test_datum, gen_test_datum, age_test_datum, rat_test_datum, 2, print_result=False, current_mode="with_fgm", attack_attr=FLAGS.attacking_privacy_preserving_attr, injected_h=original_h_drop)
+                        # # check if pred == truth label. If not, then perform the attack
+                        # print('#####')
+                        # print(y['pred']['loc'])
+                        # print(y['true']['loc'])
+                        # print(y['true']['loc'] == y['pred']['loc'])
+                        # print(type(original_h_drop))
+                        # # if y['pred']['loc'] != y['true']['loc']:
+                        # #     # perform attack
+                        # #     new_h_drop = original_h_drop - eps * sign()
+
+                        
+                        # correct_rat += a_r_datum
+                        # correct_loc += a_l_datum
+                        # correct_gen += a_g_datum
+                        # correct_age += a_a_datum
+
+                        # x_test_datum, loc_test_datum, gen_test_datum, age_test_datum, rat_test_datum = fgsm_batch_iter.next_balanced_label_batch()
+
+                    # print(
+                    #     "~~~~",
+                    #     correct_rat/test_size,
+                    #     correct_loc/test_size,
+                    #     correct_gen/test_size,
+                    #     correct_age/test_size,
+                    # )
 
             # if the spotlight is on location, then watch the loss of location (from FC layers) and use that gradient to change the label.
 
             # fgm attack
-            attack_attr = FLAGS.attacking_privacy_preserving_attr
-            # test_score, a_l, a_g, a_a = dev_attacker_step( x_test, loc_test, gen_test, age_test, rat_test, 5, "with_fgm", attack_attr)
+            # attack_attr = FLAGS.attacking_privacy_preserving_attr
+            # test_score, a_l, a_g, a_a, y s= dev_attacker_step( x_test, loc_test, gen_test, age_test, rat_test, 5, "with_fgm", attack_attr)
