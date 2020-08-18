@@ -1,7 +1,10 @@
+from __future__ import division
+
 import sys
 import numpy as np
 from tensorflow.contrib import learn
-import cPickle
+# import cPickle
+import pickle
 import re
 
 from collections import Counter
@@ -119,7 +122,7 @@ def add_unknown_words(word_vecs, vocab, k=300):
 def load_data(source_filename, target_filename, reload=False):
     print("Loading data...")
     if reload:
-        tmp = cPickle.load( open("data.p", "rb") )
+        tmp = pickle.load( open("data.p", "rb") )
 
         max_sent_length, vocab_size, label_size, \
             source_x, source_label, \
@@ -369,12 +372,14 @@ def load_glove_vec(filename, vocab, dim=50):
     file_vocab_size = 0
     word_vecs = {}
     with open(filename, "rb") as f:
-        for line in iter(f.readline, ''):
+        for line in f:
+            if line == '':
+                break
             file_vocab_size += 1
             line = line.split()
-            word = line[0]
+            word = line[0].decode("utf-8")
             if word in vocab:
-                word_vecs[word] = np.array( map(float, line[1:]), dtype='float32')
+                word_vecs[word] = np.array( list(map(float, line[1:])), dtype='float32')
                 assert( len(word_vecs[word]) == dim )
 
     return word_vecs
@@ -407,7 +412,7 @@ def load_trustpilot(reload = False):
         # filename = "../trustpilot/merge.en.random10k"
         # filename = "merge.en.downsample"
         filename = "util/merge.en.output_cleaned.pkl"
-        examples = cPickle.load( open(filename, "rb") )
+        examples = pickle.load( open(filename, "rb") )
         print("Total No. of instances:{}".format(len(examples)))
 
         #sent_length
@@ -475,8 +480,8 @@ def data_split_train_dev_test(x, shuffle=False):
 
     assert( len(x) > 1 )
     data_length = len(x[0])
-    l1 = data_length * 8 / 10
-    l2 = data_length * 9 / 10
+    l1 = data_length * 8 // 10
+    l2 = data_length * 9 // 10
     ret_list = []
     for li in x:
         ret_list.append( li[:l1] )

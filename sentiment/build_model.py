@@ -1,11 +1,13 @@
 #! /usr/bin/env python
 
 from __future__ import print_function
+from __future__ import division
 
 import os
 import time
 import datetime
-import cPickle
+# import cPickle
+import pickle
 
 import tensorflow as tf
 import numpy as np
@@ -34,14 +36,14 @@ tf.flags.DEFINE_float("lr_lambda", 0.5, "lr lambda")
 
 tf.flags.DEFINE_string("mode", "attacking_privacy", "baseline, privacy_preserving, attacking_privacy")
 
-tf.flags.DEFINE_string("baseline_attr", "age", "location, gender, age")
+tf.flags.DEFINE_string("baseline_attr", "location", "location, gender, age")
 tf.flags.DEFINE_string("privacy_preserving_attr", "location", "all, location, gender, age")
 tf.flags.DEFINE_string("attacking_privacy_preserving_attr", "location", "location, gender, age")
 
 #  parameters
 tf.flags.DEFINE_integer("batch_size", 64, "Batch Size (default: 64)")
-tf.flags.DEFINE_integer("num_epochs", 100, "Number of training epochs (default: 200 --> 100 by lrank)")
-# tf.flags.DEFINE_integer("num_epochs", 2, "Number of training epochs (default: 200 --> 100 by lrank)")
+# tf.flags.DEFINE_integer("num_epochs", 100, "Number of training epochs (default: 200 --> 100 by lrank)")
+tf.flags.DEFINE_integer("num_epochs", 2, "Number of training epochs (default: 200 --> 100 by lrank)")
 tf.flags.DEFINE_integer("evaluate_every", 100, "Evaluate model on dev set after this many steps (default: 100)")
 tf.flags.DEFINE_integer("checkpoint_every", 100, "Save model after this many steps (default: 100)")
 # Misc Parameters
@@ -65,7 +67,8 @@ max_doc_length, vocab_size, \
 FLAGS.embedding_dim = emb_size
 FLAGS.batch_size
 print("\nParameters:")
-for attr, value in sorted(FLAGS.__flags.iteritems()):
+# for attr, value in sorted(FLAGS.__flags.iteritems()):
+for attr, value in sorted(FLAGS.__flags.items()):
     print("{}={}".format(attr.upper(), value.value) )
 print("")
 
@@ -85,7 +88,7 @@ with tf.Graph().as_default():
             sequence_length=text_x.shape[1],
             vocab_size=vocab_size,
             embedding_size=FLAGS.embedding_dim,
-            filter_sizes=map(int, FLAGS.filter_sizes.split(",")),
+            filter_sizes=list(map(int, FLAGS.filter_sizes.split(","))),
             num_filters=FLAGS.num_filters,
             num_ratings=ratings.shape[1],
             num_locations=locations.shape[1],
@@ -648,7 +651,7 @@ with tf.Graph().as_default():
 
             # cnn.set_phase(phase='train')
         if FLAGS.mode == "baseline":
-            for _ in range(FLAGS.num_epochs * data_size / FLAGS.batch_size):
+            for _ in range(FLAGS.num_epochs * data_size // FLAGS.batch_size):
                 current_step = tf.train.global_step(sess, global_step)
                 # lr_lamb = (current_step / 100) / 1000.0
                 
@@ -667,7 +670,7 @@ with tf.Graph().as_default():
                     test_loss, test_acc, test_f1, test_l_loc, test_a_loc, test_l_gen, test_a_gen, test_l_age, test_a_age, y_test_batch = dev_step( x_test, loc_test, gen_test, age_test, rat_test, 2)
 
             print("training attack")
-            for _ in range(FLAGS.num_epochs * data_size / FLAGS.batch_size):
+            for _ in range(FLAGS.num_epochs * data_size // FLAGS.batch_size):
                 batch_x, batch_loc, batch_gen, batch_age, batch_rat = training_batch_iter.next_balanced_label_batch()
                 train_attacker_step( batch_x, batch_loc, batch_gen, batch_age, batch_rat, optimizer_attack_g, adv_lam=lr_lamb, lr=training_learning_rate * 0.1, attack_attr=FLAGS.baseline_attr)
             #     train_attacker_step( batch_x, batch_loc, batch_gen, batch_age, batch_rat, optimizer_g, adv_lam=lr_lamb, lr=training_learning_rate * 0.1 )
@@ -677,7 +680,7 @@ with tf.Graph().as_default():
                     test_score, a_l, a_g, a_a, y = dev_attacker_step( x_test, loc_test, gen_test, age_test, rat_test, 5)
 
         elif FLAGS.mode == "privacy_preserving":
-            for _ in range(FLAGS.num_epochs * data_size / FLAGS.batch_size):
+            for _ in range(FLAGS.num_epochs * data_size // FLAGS.batch_size):
                 current_step = tf.train.global_step(sess, global_step)
                 # lr_lamb = (current_step / 100) / 1000.0
                 
@@ -701,7 +704,7 @@ with tf.Graph().as_default():
                     test_loss, test_acc, test_f1, test_l_loc, test_a_loc, test_l_gen, test_a_gen, test_l_age, test_a_age, y_test_batch = dev_step( x_test, loc_test, gen_test, age_test, rat_test, 2)
 
             print("training attack")
-            for _ in range(FLAGS.num_epochs * data_size / FLAGS.batch_size):
+            for _ in range(FLAGS.num_epochs * data_size // FLAGS.batch_size):
                 batch_x, batch_loc, batch_gen, batch_age, batch_rat = training_batch_iter.next_balanced_label_batch()
                 train_attacker_step( batch_x, batch_loc, batch_gen, batch_age, batch_rat, optimizer_attack_l, adv_lam=lr_lamb, lr=training_learning_rate * 0.1 )
 
@@ -745,12 +748,11 @@ with tf.Graph().as_default():
                 # ==============================================================================================================
                 
         elif FLAGS.mode == "attacking_privacy":
-            for _ in range(FLAGS.num_epochs * data_size / FLAGS.batch_size):
+            for _ in range(FLAGS.num_epochs * data_size // FLAGS.batch_size):
                 current_step = tf.train.global_step(sess, global_step)
                 lr_lamb = FLAGS.lr_lambda
 
                 batch_x, batch_loc, batch_gen, batch_age, batch_rat = training_batch_iter.next_balanced_label_batch()
-
                 train_step( batch_x, batch_loc, batch_gen, batch_age, batch_rat, optimizer_g, adv_lam=lr_lamb, lr=training_learning_rate)
 
                 current_step = tf.train.global_step(sess, global_step)
@@ -764,7 +766,7 @@ with tf.Graph().as_default():
                     test_loss, test_acc, test_f1, test_l_loc, test_a_loc, test_l_gen, test_a_gen, test_l_age, test_a_age, y_test_batch = dev_step( x_test, loc_test, gen_test, age_test, rat_test, 2)
 
             print("training attack")
-            for _ in range(FLAGS.num_epochs * data_size / FLAGS.batch_size):
+            for _ in range(FLAGS.num_epochs * data_size // FLAGS.batch_size):
                 batch_x, batch_loc, batch_gen, batch_age, batch_rat = training_batch_iter.next_balanced_label_batch()
                 train_attacker_step( batch_x, batch_loc, batch_gen, batch_age, batch_rat, optimizer_attack_l, adv_lam=lr_lamb, lr=training_learning_rate * 0.1)
                 # ==============================================================================================================
