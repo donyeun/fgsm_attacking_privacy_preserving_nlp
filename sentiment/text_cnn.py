@@ -1,6 +1,6 @@
 import tensorflow as tf
 import numpy as np
-
+from tensorflow.keras import Model
 
 class TextCNN(object):
     
@@ -397,3 +397,98 @@ class TextCNN(object):
         # current_phasexx = tf.cond(tf.math.less(y, x), lambda: tf.add(x, y), lambda: tf.square(y))
         
         # current_phase = tf.cond(tf.math.equal(self.current_mode, self.current_mode), self.current_mode, self.current_mode)
+
+class CopiedClassifier(Model):
+    def wx_plus_b_h1(self, scope_name, x, size):
+        with tf.variable_scope("full_connect_%s" % scope_name) as scope:
+            self.W_h1 = tf.placeholder(tf.float32, [384, 300], name="W")
+            self.b_h1 = tf.placeholder(tf.float32, [300], name="b")
+            # self.W_h1 = tf.get_variable(
+            #     name="W",
+            #     shape=size,
+            #     initializer=tf.contrib.layers.xavier_initializer(),
+            #     trainable=False,
+            # )
+            # self.b_h1 = tf.get_variable(
+            #     name="b",
+            #     shape=[size[1]],
+            #     initializer=tf.constant_initializer(0.1, ),
+            #     trainable=False,
+            # )
+            y = tf.nn.xw_plus_b(x, self.W_h1, self.b_h1, name="hidden")
+            return y
+
+    def wx_plus_b_score(self, scope_name, x, size):
+        with tf.variable_scope("full_connect_%s" % scope_name) as scope:
+            # self.W_score = tf.get_variable(
+            #     name="W",
+            #     shape=size,
+            #     initializer=tf.contrib.layers.xavier_initializer(),
+            #     trainable=False
+            # )
+            # self.b_score = tf.get_variable(
+            #     name="b",
+            #     shape=[size[1]],
+            #     initializer=tf.constant_initializer(0.1, ),
+            #     trainable=False,
+            # )
+            y = tf.nn.xw_plus_b(x, self.W_score, self.b_score, name="hidden")
+            return y
+
+    def __init__(self, filter_sizes, num_filters, num_locations, hidden_size):
+        super(CopiedClassifier).__init__()
+
+        self.h_drop = tf.placeholder(tf.float32, [1, num_filters * len(filter_sizes)], name="h_drop")
+        self.input_location = tf.placeholder(tf.float32, [None, num_locations], name="input_location_truth")
+        self.W_h1 = tf.placeholder(tf.float32, [384, 300], name="W")
+        self.b_h1 = tf.placeholder(tf.float32, [300], name="b")
+        self.W_score = tf.placeholder(tf.float32, [300, 2], name="W")
+        self.b_score = tf.placeholder(tf.float32, [2], name="b")
+
+        with tf.variable_scope("copied_attacker", reuse=tf.AUTO_REUSE):
+            h1 = self.wx_plus_b_h1(
+                scope_name="h1",
+                x=self.h_drop,
+                size=[num_filters * len(filter_sizes), hidden_size]
+            )
+            h1 = tf.nn.relu(h1, name="relu")
+            self.location_attacker_score = self.wx_plus_b_score(
+                scope_name="score",
+                x=h1,
+                size=[hidden_size, num_locations]
+                )
+            with tf.name_scope("loss"):
+                losses = tf.nn.softmax_cross_entropy_with_logits_v2(
+                    logits=self.location_attacker_score,
+                    labels=self.input_location
+                    )
+                self.location_attacker_loss = tf.reduce_mean(losses)
+            with tf.name_scope("accuracy"):
+                self.location_attacker_pred = tf.argmax(self.location_attacker_score, 1, name="predictions")
+                cor_pred = tf.cast(
+                    tf.equal(self.location_attacker_pred, tf.argmax(self.input_location, 1) ),
+                    "float"
+                    )
+                self.location_attacker_accuracy = tf.reduce_mean(cor_pred, name="acc")
+
+
+    # def call(self, x):
+    #     pass
+
+    # def train_step(model, inputs, labels):
+    #     pass
+
+
+    # lanjutan_cnn_cp = TensorFlowV2Classifier(
+    #     model = model_cp
+    #     loss_object = tf.keras.losses.BinaryCrossEntropy(from_logits=True)
+        # input_ph = tf.placeholder(tf.float32, shape=[1, 384]),
+        # labels_ph = tf.placeholder(tf.int32, shape=[1, 2]),
+        # output = model_cp.location_attacker_score,
+        # train = original_h_drop,
+        # loss = model.cp.location_attacker_loss,
+
+    # )
+
+    # predictions = classifier.predict(x_test)
+

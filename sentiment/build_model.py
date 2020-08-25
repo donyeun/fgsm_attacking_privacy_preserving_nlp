@@ -13,7 +13,8 @@ import tensorflow as tf
 import numpy as np
 
 import data_helpers
-from text_cnn import TextCNN
+from text_cnn import TextCNN, CopiedClassifier
+from art.estimators.classification import TensorFlowV2Classifier
 
 from tensorflow.contrib import learn
 import sklearn.metrics
@@ -43,7 +44,7 @@ tf.flags.DEFINE_string("attacking_privacy_preserving_attr", "location", "locatio
 #  parameters
 tf.flags.DEFINE_integer("batch_size", 64, "Batch Size (default: 64)")
 # tf.flags.DEFINE_integer("num_epochs", 100, "Number of training epochs (default: 200 --> 100 by lrank)")
-tf.flags.DEFINE_integer("num_epochs", 2, "Number of training epochs (default: 200 --> 100 by lrank)")
+tf.flags.DEFINE_integer("num_epochs", 1, "Number of training epochs (default: 200 --> 100 by lrank)")
 tf.flags.DEFINE_integer("evaluate_every", 100, "Evaluate model on dev set after this many steps (default: 100)")
 tf.flags.DEFINE_integer("checkpoint_every", 100, "Save model after this many steps (default: 100)")
 # Misc Parameters
@@ -97,6 +98,13 @@ with tf.Graph().as_default():
             hidden_size=300,
             # mode=FLAGS.mode,
             l2_reg_lambda=FLAGS.l2_reg_lambda,
+            )
+        
+        lanjutan_cnn_copied = CopiedClassifier(
+                filter_sizes=list(map(int, FLAGS.filter_sizes.split(","))),
+                num_filters=FLAGS.num_filters,
+                num_locations=locations.shape[1],
+                hidden_size=300,
             )
 
         # Define Training procedure
@@ -783,15 +791,88 @@ with tf.Graph().as_default():
                     correct_loc = 0
                     correct_gen = 0
                     correct_age = 0
+            
+            print("ATTACKKKKKKKKKKKKKKKK PRIVACYYY")            
 
-            print("ATTACKKKKKKKKKKKKKKKK")
-            for _ in range(test_size):
-                x_test_datum, loc_test_datum, gen_test_datum, age_test_datum, rat_test_datum = fgsm_batch_iter.next_balanced_label_batch()
+            x_test_datum, loc_test_datum, gen_test_datum, age_test_datum, rat_test_datum = fgsm_batch_iter.next_balanced_label_batch()
+            a_r_datum, a_l_datum, a_g_datum, a_a_datum, y, original_h_drop = dev_attacker_step( x_test_datum, loc_test_datum, gen_test_datum, age_test_datum, rat_test_datum, 4, print_result=True, current_mode="without_fgm", attack_attr=FLAGS.attacking_privacy_preserving_attr, return_h_drop=True)
+
+            # copy the weights and biases to other model
+            print('weights and biases ************')
+            weight_var_h1 = sess.run(tf.trainable_variables("l_attacker/full_connect_h1/W"))
+            bias_var_h1 = sess.run(tf.trainable_variables("l_attacker/full_connect_h1/b"))
+
+            weight_var_score = sess.run(tf.trainable_variables("l_attacker/full_connect_score/W"))
+            bias_var_score = sess.run(tf.trainable_variables("l_attacker/full_connect_score/b"))
+
+            # print(weight_var_h1.shape)
+            print(type(bias_var_h1))
+            # print(weight_var_score.shape)
+            # print(bias_var_score.shape)
+
+            print('weights and biases copied ************')
+            # lanjutan_cnn_copied = CopiedClassifier(
+            #     filter_sizes=list(map(int, FLAGS.filter_sizes.split(","))),
+            #     num_filters=FLAGS.num_filters,
+            #     num_locations=locations.shape[1],
+            #     hidden_size=300,
+            # )
+
+            feed_dict = {
+                lanjutan_cnn_copied.input_location : batch_loc,
+                lanjutan_cnn_copied.h_drop : original_h_drop,
+                lanjutan_cnn_copied.W_h1 : weight_var_h1[0],
+                lanjutan_cnn_copied.b_h1 : bias_var_h1[0],
+                lanjutan_cnn_copied.W_score : weight_var_score[0],
+                lanjutan_cnn_copied.b_score : bias_var_score[0],
+                
+            }
+            print('ergonomics')
+
+            # sess.run(lanjutan_cnn_copied.W_h1.assign(weight_var_h1))
+
+            location_attacker_score = sess.run(
+                [lanjutan_cnn_copied.location_attacker_score],
+                feed_dict
+            )
+
+            print('~~~~~~~~~~~~~~~~~~~~~~~')
+            print(location_attacker_score)
+            
+            # sess.run()
+            # sess.run(lanjutan_cnn_copied.W_h1.assign(weight_var_h1))
+            print('bambang')
+
+            # sess.run(lanjutan_cnn_copied.b_h1.assign(bias_var_h1))
+            # sess.run(lanjutan_cnn_copied.W_score.assign(weight_var_score))
+            print('bambang2')
+            # sess.run(lanjutan_cnn_copied.b_score.assign(bias_var_score))
+            lanjutan_in_art = TensorFlowV2Classifier(
+                model = lanjutan_cnn_copied,
+                nb_classes = 2,
+                input_shape = (384, 300),
+            )
+
+            predictions = lanjutan_in_art.predict(original_h_drop)
+            # var_scope2 = tf.trainable_variables("copied_attacker/full_connect_h1/W")
+            # weight_var2 = sess.run(var_scope2)
+            # print('shibuya')
+            # print('original ^^^^^^^^^^^^^')
+            # print(weight_var_h1)
+            # print('copied ^^^^^^^^^^^^^')
+            # print(weight_var2)
+            # print(weight_var_h1 == weight_var2)
+
+
+
+            # print('ori cuy @@@@@@@@@')
+            # print(type(original_h_drop))
+            # print(original_h_drop.shape)
+            # print(original_h_drop)
+
+            for i in range(test_size):
                 a_r_datum, a_l_datum, a_g_datum, a_a_datum, y, original_h_drop = dev_attacker_step( x_test_datum, loc_test_datum, gen_test_datum, age_test_datum, rat_test_datum, 4, print_result=True, current_mode="without_fgm", attack_attr=FLAGS.attacking_privacy_preserving_attr, return_h_drop=True)
-                # print('#####')
-                # print(y['pred']['loc'])
-                # print(y['true']['loc'])
-                # print(y['true']['loc'] == y['pred']['loc'])
+
                 if y['pred']['loc'] != y['true']['loc']:
                     fgsm_step(x_test_datum, loc_test_datum, gen_test_datum, age_test_datum, rat_test_datum)
                 else:
@@ -803,6 +884,11 @@ with tf.Graph().as_default():
                         int(y['pred']['gen'] == y['true']['gen']),
                         int(y['pred']['age'] == y['true']['age']),
                     ))
+
+                # proceed to the next datum/sample
+                if i != test_size-2:
+                    x_test_datum, loc_test_datum, gen_test_datum, age_test_datum, rat_test_datum = fgsm_batch_iter.next_balanced_label_batch()
+            
                     # ==========kelar direview sampe sini
                         # # a_r_datum, a_l_datum, a_g_datum, a_a_datum, y, original_h_drop = dev_attacker_step( x_test_datum, loc_test_datum, gen_test_datum, age_test_datum, rat_test_datum, 2, print_result=False, current_mode="with_fgm", attack_attr=FLAGS.attacking_privacy_preserving_attr, injected_h=original_h_drop)
                         # # check if pred == truth label. If not, then perform the attack
