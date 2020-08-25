@@ -4,6 +4,11 @@ import numpy as np
 
 class TextCNN(object):
     
+    def boundary(self, 
+                x):
+        x_adv = tf.identity(x, name="boundary_x_adv")
+        return x_adv
+
     def fgm(self,
             x, attack_attr, 
             filter_sizes, num_filters, num_ratings, num_locations, num_genders, num_ages, hidden_size,
@@ -11,7 +16,7 @@ class TextCNN(object):
             # eps=0.01, epochs=5, sign=True,
         ):
         # return x
-        x_adv = tf.identity(x, name="x_adv")
+        x_adv = tf.identity(x, name="fgm_x_adv")
 
         if sign:
             noise_fn = tf.sign
@@ -23,8 +28,6 @@ class TextCNN(object):
         def _cond(x_adv, i):
             return tf.less(i, epochs)
 
-# # begin
-        # def _body(x_adv, i, attack_attr, filter_sizes, num_filters, num_ratings, num_locations, num_genders, num_ages, hidden_size):
         def _body(x_adv, i):
             rating_loss, rating_accuracy, rating_pred, rating_score, \
                 location_attacker_loss, location_attacker_accuracy, location_attacker_pred, location_attacker_score, \
@@ -333,8 +336,9 @@ class TextCNN(object):
         self.input_gender = tf.placeholder(tf.float32, [None, num_genders], name="input_gender_truth")
         self.input_age = tf.placeholder(tf.float32, [None, num_ages], name="input_age_truth")
         
-        self.current_mode = tf.placeholder_with_default("without_fgm", name="current_mode", shape=[])
+        self.current_mode = tf.placeholder_with_default("without_privacy_preserving_attack", name="current_mode", shape=[])
         self.attack_attr = tf.placeholder(tf.string, name="attack_attr", shape=[])
+        self.attack_algorithm = tf.placeholder_with_default("fgm", name="attack_algorithm", shape=[])
 
         l2_loss = tf.constant(0.0)
 
@@ -362,12 +366,12 @@ class TextCNN(object):
             # self.injected_h = self.fgm(self.original_h_drop, self.attack_attr, filter_sizes, num_filters, num_ratings, num_locations, num_genders, num_ages, hidden_size, eps=0.01, epochs=1, sign=True),
 
             self.h_drop = tf.cond(
-                tf.math.equal(self.current_mode, "with_fgm"),
-                # lambda: tf.identity(self.injected_h),
-                # lambda: tf.identity(self.injected_h),
-                # lambda: self.fgm(self.original_h_drop, self.attack_attr, filter_sizes, num_filters, num_ratings, num_locations, num_genders, num_ages, hidden_size, eps=0.01, epochs=1, sign=True),
-                # lambda: tf.identity(self.injected_h),
-                lambda: tf.identity(self.fgm(self.original_h_drop, self.attack_attr, filter_sizes, num_filters, num_ratings, num_locations, num_genders, num_ages, hidden_size, eps=0.01, epochs=1, sign=True)),
+                tf.math.equal(self.current_mode, "with_privacy_preserving_attack"),
+                lambda: tf.cond(
+                    tf.math.equal(self.attack_algorithm, "fgm"),
+                    lambda: tf.identity(self.fgm(self.original_h_drop, self.attack_attr, filter_sizes, num_filters, num_ratings, num_locations, num_genders, num_ages, hidden_size, eps=0.01, epochs=1, sign=True)),
+                    lambda: tf.identity(self.boundary(self.original_h_drop))
+                ),
                 lambda: tf.identity(self.original_h_drop),
             )
 

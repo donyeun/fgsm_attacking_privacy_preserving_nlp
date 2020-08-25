@@ -37,8 +37,11 @@ tf.flags.DEFINE_float("lr_lambda", 0.5, "lr lambda")
 tf.flags.DEFINE_string("mode", "attacking_privacy", "baseline, privacy_preserving, attacking_privacy")
 
 tf.flags.DEFINE_string("baseline_attr", "location", "location, gender, age")
+
 tf.flags.DEFINE_string("privacy_preserving_attr", "location", "all, location, gender, age")
+
 tf.flags.DEFINE_string("attacking_privacy_preserving_attr", "location", "location, gender, age")
+tf.flags.DEFINE_string("attacking_privacy_algorithm", "boundary", "fgsm, boundary")
 
 #  parameters
 tf.flags.DEFINE_integer("batch_size", 64, "Batch Size (default: 64)")
@@ -208,8 +211,7 @@ with tf.Graph().as_default():
                 return -1
             return c_cor / c_total
 
-        def fgsm_step(batch_x, batch_loc, batch_gen, batch_age, batch_rat, data_id=4, current_mode="with_fgm", attack_attr="", print_result=True, injected_h=None, return_h_drop=False):
-        # def fgsm_step(batch_x, batch_loc, batch_gen, batch_age, batch_rat, data_id=4, current_mode="without_fgm", attack_attr="", print_result=True, injected_h=None, return_h_drop=False):
+        def privacy_preserving_attack_step(batch_x, batch_loc, batch_gen, batch_age, batch_rat, data_id=4, attack_attr="", print_result=True, injected_h=None, return_h_drop=False, attack_algorithm="fgm"):
             """1
             Evaluates model on a dev set
             """
@@ -221,12 +223,10 @@ with tf.Graph().as_default():
               cnn.input_age: batch_age,
               adv_lambda: 0.,
               cnn.dropout_keep_prob: 1.,
-              cnn.current_mode: current_mode,
+              cnn.current_mode: "with_privacy_preserving_attack",
               cnn.attack_attr: attack_attr,
+              cnn.attack_algorithm: attack_algorithm,
             }
-            
-            # if injected_h is not None:
-            #     feed_dict[cnn.injected_h] = injected_h
 
             step, l_rat, a_rat, p_rat, l_loc, p_loc, l_gen, p_gen, l_age, p_age = sess.run(
                 [global_step,
@@ -502,7 +502,7 @@ with tf.Graph().as_default():
                     )
                 )
 
-        def dev_attacker_step(batch_x, batch_loc, batch_gen, batch_age, batch_rat, data_id=4, current_mode="without_fgm", attack_attr="", print_result=True, injected_h=None, return_h_drop=False):
+        def dev_attacker_step(batch_x, batch_loc, batch_gen, batch_age, batch_rat, data_id=4, attack_attr="", print_result=True, injected_h=None, return_h_drop=False):
             """1
             Evaluates model on a dev set
             """
@@ -514,7 +514,7 @@ with tf.Graph().as_default():
               cnn.input_age: batch_age,
               adv_lambda: 0.,
               cnn.dropout_keep_prob: 1.,
-              cnn.current_mode: current_mode,
+              cnn.current_mode: "without_privacy_preserving_attack",
               cnn.attack_attr: attack_attr,
             }
             
@@ -787,13 +787,13 @@ with tf.Graph().as_default():
             print("ATTACKKKKKKKKKKKKKKKK")
             for _ in range(test_size):
                 x_test_datum, loc_test_datum, gen_test_datum, age_test_datum, rat_test_datum = fgsm_batch_iter.next_balanced_label_batch()
-                a_r_datum, a_l_datum, a_g_datum, a_a_datum, y, original_h_drop = dev_attacker_step( x_test_datum, loc_test_datum, gen_test_datum, age_test_datum, rat_test_datum, 4, print_result=True, current_mode="without_fgm", attack_attr=FLAGS.attacking_privacy_preserving_attr, return_h_drop=True)
+                a_r_datum, a_l_datum, a_g_datum, a_a_datum, y, original_h_drop = dev_attacker_step( x_test_datum, loc_test_datum, gen_test_datum, age_test_datum, rat_test_datum, 4, print_result=True, attack_attr=FLAGS.attacking_privacy_preserving_attr, return_h_drop=True)
                 # print('#####')
                 # print(y['pred']['loc'])
                 # print(y['true']['loc'])
                 # print(y['true']['loc'] == y['pred']['loc'])
                 if y['pred']['loc'] != y['true']['loc']:
-                    fgsm_step(x_test_datum, loc_test_datum, gen_test_datum, age_test_datum, rat_test_datum)
+                    privacy_preserving_attack_step(x_test_datum, loc_test_datum, gen_test_datum, age_test_datum, rat_test_datum, attack_algorithm=FLAGS.attacking_privacy_algorithm)
                 else:
                     print("8\tx\tx\t{}\t{}\tx\t{}\tx\t{}\tx\t{}".format(
                         # step,
